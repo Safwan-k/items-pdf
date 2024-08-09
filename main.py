@@ -287,7 +287,7 @@ def makeCsv(json_array, csv_path):
 image_url = []
 
 
-@app.route('/upload', methods=['POST'])
+@app.route('items-pdf/upload', methods=['POST'])
 def upload_file():
     try:
         if 'file' not in request.files:
