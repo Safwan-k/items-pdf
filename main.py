@@ -1,15 +1,19 @@
 import csv
+import io
 import re
+import tempfile
 from datetime import datetime
 import boto3
 import fitz
 import os
-import json
 
 from secrets import bucket, __aws_access_key_id, __aws_secret_access_key
+from flask import Flask, request, jsonify, Response
+
+app = Flask(__name__)
 
 
-def extract_and_save_images(pdf_path):
+def extract_and_save_images(pdf_path, output_dir):
     doc = fitz.open(pdf_path)
     image_info = []
 
@@ -65,8 +69,7 @@ def upload_to_s3(content, bucket_name, s3_client, object_name, is_image=True):
         print(f"Failed to upload {object_name}: {e}")
 
 
-def image_position(page_no, x1, y1):
-    global image_results
+def image_position(page_no, x1, y1, image_results):
     specific_image = get_image_at_position(image_results, page_no, x1, y1)
     if specific_image:
         print(f"Image found: {specific_image['filename']}")
@@ -111,7 +114,7 @@ def extract_text_from_pdf(pdf_path):
     all_pages_bboxlog = []
     for page_num in range(num_pages):
         page = document.load_page(page_num)
-    # Extract text with its font information
+        # Extract text with its font information
         text_bbox = page.get_bboxlog()
         filtered_bbox_log = [entry for entry in text_bbox if entry[0] in ['fill-image', 'fill-text']]
         print(filtered_bbox_log)
@@ -120,8 +123,8 @@ def extract_text_from_pdf(pdf_path):
     return all_pages_bboxlog
 
 
-def process_pymupdf_data(data):
-    document = fitz.open(__pdf_path)
+def process_pymupdf_data(data, pdf_path):
+    document = fitz.open(pdf_path)
     items = []
     for index, item_list in enumerate(data):
         page = document.load_page(index)
@@ -252,7 +255,7 @@ def check_bbox(bbox_to_check, image_dict):
     return []
 
 
-def makeCsv(json_array):
+def makeCsv(json_array, csv_path):
     result = []
     print(json_array)
     for index, item in enumerate(json_array):
@@ -272,27 +275,55 @@ def makeCsv(json_array):
 
     filtered_result = [item for item in result if not (item['item_id'] == "" and item['price'] is None)]
 
-    with open('items.csv', mode='w', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=["name", "size", "price", "item_id", "image"])
-        writer.writeheader()
-        for item in filtered_result:
-            writer.writerow(item)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["name", "size", "price", "item_id", "image"])
+    writer.writeheader()
+    for item in filtered_result:
+        writer.writerow(item)
+
+    return output.getvalue()
 
 
 image_url = []
-__pdf_path = "s3.pdf"
-output_dir = "/Users/safwanoffice/PycharmProjects/items-pdf/output"
 
-# Extract images and upload to s3
-image_results = extract_and_save_images(__pdf_path)
-reusult_bbox = extract_text_from_pdf(pdf_path=__pdf_path)
-items = process_pymupdf_data(reusult_bbox)
-image_dict = bbox_to_image_dict(image_results)
 
-# Update items with image filenames
-updated_items = update_items_with_images(items, image_dict)
-# create csv
-makeCsv(updated_items)
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
 
-# Output the result
-print(json.dumps(updated_items, indent=2))
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+
+        if file:
+            # Save uploaded file to a temporary directory
+            temp_dir = tempfile.mkdtemp()
+            temp_pdf_path = os.path.join(temp_dir, file.filename)
+            file.save(temp_pdf_path)
+
+            # Process PDF file
+            image_results = extract_and_save_images(temp_pdf_path, app.config['OUTPUT_DIR'])
+            text_results = extract_text_from_pdf(temp_pdf_path)
+            items = process_pymupdf_data(text_results, temp_pdf_path)
+            image_dict = bbox_to_image_dict(image_results)
+            updated_items = update_items_with_images(items, image_dict)
+            csv_path = os.path.join(app.config['OUTPUT_DIR'], 'output.csv')
+            csv_output = makeCsv(updated_items, csv_path)
+
+            # Return JSON response
+            return Response(
+                csv_output,
+                mimetype="text/csv",
+                headers={"Content-disposition": "attachment; filename=output.csv"}
+            )
+    except Exception as e:
+        return f'Exception occurred {e}'
+
+    return jsonify({'error': 'Unexpected error occurred'}), 500
+
+
+if __name__ == '__main__':
+    app.config['OUTPUT_DIR'] = '/Users/safwanoffice/PycharmProjects/items-pdf/output'
+    app.run()
