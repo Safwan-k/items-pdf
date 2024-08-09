@@ -326,4 +326,4 @@ def upload_file():
 
 if __name__ == '__main__':
     app.config['OUTPUT_DIR'] = '/Users/safwanoffice/PycharmProjects/items-pdf/output'
-    app.run()
+    app.run(port=5151)
