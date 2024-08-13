@@ -109,9 +109,6 @@ def get_image_at_position(image_info, target_page, target_x, target_y):
     return None
 
 
-
-
-
 def extract_text_from_pdf(pdf_path):
     document = fitz.open(pdf_path)
     num_pages = document.page_count
