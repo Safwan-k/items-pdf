@@ -85,8 +85,7 @@ def main(image_filename, image_bytes, ):
     object_name = f'{folder_name}{image_filename}'
     final_image_url = 'https://upload-file-pdf.s3.ap-south-1.amazonaws.com/' + object_name
     image_url.append(final_image_url)
-    with ThreadPoolExecutor() as executor:
-        executor.submit(image_bytes, upload_to_s3, bucket, s3_client, object_name)
+    executor.submit(upload_to_s3, image_bytes, bucket, s3_client, object_name)
 
     return final_image_url
 
@@ -332,4 +331,5 @@ def upload_file():
 
 if __name__ == '__main__':
     app.config['OUTPUT_DIR'] = '/Users/safwanoffice/PycharmProjects/items-pdf/output'
+    executor = ThreadPoolExecutor()
     app.run(port=5151)
