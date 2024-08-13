@@ -2,6 +2,7 @@ import csv
 import io
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import boto3
 import fitz
@@ -69,6 +70,27 @@ def upload_to_s3(content, bucket_name, s3_client, object_name, is_image=True):
         print(f"Failed to upload {object_name}: {e}")
 
 
+def main(image_filename, image_bytes, ):
+    global image_url
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=__aws_access_key_id,
+        aws_secret_access_key=__aws_secret_access_key
+    )
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+
+    folder_name = f"{date_str}/"
+
+    object_name = f'{folder_name}{image_filename}'
+    final_image_url = 'https://upload-file-pdf.s3.ap-south-1.amazonaws.com/' + object_name
+    image_url.append(final_image_url)
+    with ThreadPoolExecutor() as executor:
+        executor.submit(image_bytes, upload_to_s3, bucket, s3_client, object_name)
+
+    return final_image_url
+
+
 def image_position(page_no, x1, y1, image_results):
     specific_image = get_image_at_position(image_results, page_no, x1, y1)
     if specific_image:
@@ -88,23 +110,7 @@ def get_image_at_position(image_info, target_page, target_x, target_y):
     return None
 
 
-def main(image_filename, image_bytes, ):
-    global image_url
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=__aws_access_key_id,
-        aws_secret_access_key=__aws_secret_access_key
-    )
 
-    date_str = datetime.now().strftime("%Y-%m-%d")
-
-    folder_name = f"{date_str}/"
-
-    object_name = f'{folder_name}{image_filename}'
-    final_image_url = 'https://upload-file-pdf.s3.ap-south-1.amazonaws.com/' + object_name
-    image_url.append(final_image_url)
-    upload_to_s3(image_bytes, bucket, s3_client, object_name)
-    return final_image_url
 
 
 def extract_text_from_pdf(pdf_path):
